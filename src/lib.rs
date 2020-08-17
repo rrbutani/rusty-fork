@@ -125,4 +125,6 @@ mod child_wrapper;
 pub use crate::sugar::RustyForkId;
 pub use crate::error::{Error, Result};
 pub use crate::fork::fork;
+#[doc(hidden)]
+pub use crate::fork::fork_inner;
 pub use crate::child_wrapper::{ChildWrapper, ExitStatusWrapper};

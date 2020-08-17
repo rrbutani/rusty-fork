@@ -89,11 +89,11 @@ macro_rules! rusty_fork_test {
                 fn (&mut $crate::ChildWrapper, &mut ::std::fs::File) =
                 supervise_fn;
 
-            $crate::fork(
+            let _ = $crate::fork_inner(
                 $crate::rusty_fork_test_name!($test_name),
                 $crate::rusty_fork_id!(),
                 $crate::fork_test::no_configure_child,
-                supervise, body).expect("forking test failed")
+                supervise, body, false).expect("forking test failed");
         }
     )* };
 

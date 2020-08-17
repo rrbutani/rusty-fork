@@ -84,7 +84,28 @@ pub fn fork<ID, MODIFIER, PARENT, CHILD, R>(
     fork_id: ID,
     process_modifier: MODIFIER,
     in_parent: PARENT,
-    in_child: CHILD) -> Result<R>
+    in_child: CHILD,
+) -> Result<R>
+where
+    ID : Hash,
+    MODIFIER : FnOnce (&mut process::Command),
+    PARENT : FnOnce (&mut ChildWrapper, &mut fs::File) -> R,
+    CHILD : FnOnce ()
+{
+    fork_inner(test_name, fork_id, process_modifier, in_parent, in_child, true)
+        .map(Option::unwrap)
+}
+
+#[doc(hidden)]
+#[allow(missing_docs)]
+pub fn fork_inner<ID, MODIFIER, PARENT, CHILD, R>(
+    test_name: &str,
+    fork_id: ID,
+    process_modifier: MODIFIER,
+    in_parent: PARENT,
+    in_child: CHILD,
+    terminate: bool,
+) -> Result<Option<R>>
 where
     ID : Hash,
     MODIFIER : FnOnce (&mut process::Command),
@@ -100,22 +121,35 @@ where
     let mut in_parent = Some(in_parent);
     let mut in_child = Some(in_child);
 
-    fork_impl(test_name, fork_id,
+    let ret = if let Some(()) = fork_impl(test_name, fork_id,
               &mut |cmd| process_modifier.take().unwrap()(cmd),
               &mut |child, file| return_value = Some(
                   in_parent.take().unwrap()(child, file)),
-              &mut || in_child.take().unwrap()())
-        .map(|_| return_value.unwrap())
+              &mut || in_child.take().unwrap()(),
+              terminate)? {
+        Some(return_value.unwrap())
+    } else {
+        None
+    };
+
+    Ok(ret)
 }
 
 fn fork_impl(test_name: &str, fork_id: String,
              process_modifier: &mut dyn FnMut (&mut process::Command),
              in_parent: &mut dyn FnMut (&mut ChildWrapper, &mut fs::File),
-             in_child: &mut dyn FnMut ()) -> Result<()> {
+             in_child: &mut dyn FnMut (),
+             terminate: bool) -> Result<Option<()>> {
     let mut occurs = env::var(OCCURS_ENV).unwrap_or_else(|_| String::new());
     if occurs.contains(&fork_id) {
         match panic::catch_unwind(panic::AssertUnwindSafe(in_child)) {
-            Ok(_) => process::exit(0),
+            Ok(_) => {
+                if terminate {
+                    process::exit(0)
+                } else {
+                    Ok(None)
+                }
+            },
             // Assume that the default panic handler already printed something
             //
             // We don't use process::abort() since it produces core dumps on
@@ -187,7 +221,7 @@ fn fork_impl(test_name: &str, fork_id: String,
 
         let ret = in_parent(&mut child.0, &mut child.1);
 
-        Ok(ret)
+        Ok(Some(ret))
     }
 }
 
